@@ -77,6 +77,87 @@ In Xcode, under **Signing & Capabilities** for each target, remove the old App G
 
 Select the `notify` scheme and hit **Run** (⌘R). Sign in with your Google account when prompted.
 
+## Run at login (auto-start + auto-restart)
+
+You can configure macOS to launch Notify automatically at login and restart it if it ever crashes, using a `launchd` LaunchAgent.
+
+### 1. Build a release archive
+
+In Xcode, go to **Product → Archive**, then **Distribute App → Copy App** to export `notify.app` somewhere permanent, e.g. `/Applications/notify.app`. The LaunchAgent will point to this path — don't move the app after setting it up or the agent will fail to launch.
+
+### 2. Find the executable path
+
+The LaunchAgent needs the path to the binary inside the app bundle, not the `.app` itself:
+
+```
+/Applications/notify.app/Contents/MacOS/notify
+```
+
+### 3. Create the LaunchAgent plist
+
+Create the file `~/Library/LaunchAgents/org.roberthughesdev.notify.plist`:
+
+```bash
+touch ~/Library/LaunchAgents/org.roberthughesdev.notify.plist
+```
+
+Open it in any text editor and paste:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>org.roberthughesdev.notify</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/notify.app/Contents/MacOS/notify</string>
+    </array>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/notify.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/notify.error.log</string>
+</dict>
+</plist>
+```
+
+### 4. Load the agent
+
+```bash
+launchctl load ~/Library/LaunchAgents/org.roberthughesdev.notify.plist
+```
+
+The app will start immediately and will relaunch automatically on crash or after a reboot.
+
+### Useful commands
+
+```bash
+# Start manually
+launchctl start org.roberthughesdev.notify
+
+# Stop (will restart automatically due to KeepAlive — see note below)
+launchctl stop org.roberthughesdev.notify
+
+# Permanently disable and unload
+launchctl unload ~/Library/LaunchAgents/org.roberthughesdev.notify.plist
+
+# View logs
+tail -f /tmp/notify.log
+tail -f /tmp/notify.error.log
+```
+
+> **Note on KeepAlive:** Because `KeepAlive` is `true`, using `launchctl stop` will stop the process momentarily but `launchd` will restart it. To fully stop the app, use `launchctl unload` instead.
+
 ## How it works
 
 1. On launch, the app signs into Gmail via Google OAuth (read-only scope)
